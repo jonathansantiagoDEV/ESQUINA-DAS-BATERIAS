@@ -28,6 +28,15 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+def _parse_cors_origins() -> List[str]:
+    raw = os.environ.get("CORS_ORIGINS", FRONTEND_URL)
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    if "http://localhost:3000" not in origins:
+        origins.append("http://localhost:3000")
+    return origins
+
+CORS_ORIGINS = _parse_cors_origins()
+
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -604,8 +613,13 @@ app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("server:app", host="0.0.0.0", port=port)
