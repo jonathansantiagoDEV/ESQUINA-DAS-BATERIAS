@@ -39,7 +39,7 @@ export default class ErrorBoundary extends React.Component {
               {String(this.state.error && this.state.error.stack ? this.state.error.stack : this.state.error)}
             </pre>
             <button
-              onClick={() => this.setState({ error: null })}
+              onClick={() => window.location.reload()}
               style={{
                 marginTop: 16, background: "#00D2FF", color: "#090B10", border: "none",
                 padding: "10px 20px", borderRadius: 8, fontWeight: 700, cursor: "pointer",

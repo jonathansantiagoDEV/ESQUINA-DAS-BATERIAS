@@ -58,6 +58,7 @@ export default function DriverApp() {
   const [simulating, setSimulating] = useState(false);
   const simTimerRef = useRef(null);
   const simPosRef = useRef(null);
+  const mountedRef = useRef(true);
 
   const load = async () => {
     try {
@@ -74,7 +75,7 @@ export default function DriverApp() {
     const off = () => setOnline(false);
     window.addEventListener("online", on); window.addEventListener("offline", off);
     bufferCount().then(setBuffered);
-    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); stopTracking(); stopSimulation(); };
+    return () => { mountedRef.current = false; window.removeEventListener("online", on); window.removeEventListener("offline", off); stopTracking(); stopSimulation(); };
   }, []);
 
   const effectiveOnline = online && !simOffline;
@@ -98,7 +99,8 @@ export default function DriverApp() {
       timestamp: new Date().toISOString(),
     };
     if (!effectiveOnline) {
-      await bufferPing(pedidoId, ping); setBuffered(await bufferCount());
+      await bufferPing(pedidoId, ping);
+      if (mountedRef.current) setBuffered(await bufferCount());
       return;
     }
     try {
@@ -107,7 +109,8 @@ export default function DriverApp() {
       if (now - lastFlushRef.current > 5000) { lastFlushRef.current = now; await flushBuffer(pedidoId); }
       await api.post(`/pedidos/${pedidoId}/pings`, { pedido_id: pedidoId, pings: [ping] });
     } catch (e) {
-      await bufferPing(pedidoId, ping); setBuffered(await bufferCount());
+      await bufferPing(pedidoId, ping);
+      if (mountedRef.current) setBuffered(await bufferCount());
     }
   };
 
@@ -167,6 +170,7 @@ export default function DriverApp() {
 
     toast.info("Calculando rota…");
     let route = await fetchRoadRoute(start, destino);
+    if (!mountedRef.current) return; // user navigated away while we awaited
     if (!route) {
       toast.error("Não consegui calcular a rota pelas ruas, usando linha reta.");
       route = straightLinePath(start, destino);
@@ -178,6 +182,7 @@ export default function DriverApp() {
 
     let idx = 0;
     simTimerRef.current = setInterval(async () => {
+      if (!mountedRef.current) { clearInterval(simTimerRef.current); simTimerRef.current = null; return; }
       idx += 1;
       if (idx >= route.length) {
         stopSimulation();
@@ -200,7 +205,7 @@ export default function DriverApp() {
   const stopSimulation = () => {
     if (simTimerRef.current) clearInterval(simTimerRef.current);
     simTimerRef.current = null;
-    setSimulating(false);
+    if (mountedRef.current) setSimulating(false);
   };
 
   const deliver = async () => {

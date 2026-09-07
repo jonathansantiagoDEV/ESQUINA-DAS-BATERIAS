@@ -63,7 +63,7 @@ export default function LiveMap({
     mapRef.current = map;
     setReady(true);
     return () => {
-      map.remove();
+      try { map.remove(); } catch (e) { /* container may already be gone */ }
       mapRef.current = null;
       setReady(false);
     };
