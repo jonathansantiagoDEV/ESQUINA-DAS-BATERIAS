@@ -20,7 +20,7 @@ export default function AdminDashboard() {
     } catch (e) { toast.error(formatApiError(e.response?.data?.detail)); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); const iv = setInterval(load, 8000); return () => clearInterval(iv); }, []);
+  useEffect(() => { load(); const iv = setInterval(load, 3000); return () => clearInterval(iv); }, []);
 
   const buckets = useMemo(() => ({
     pendente: pedidos.filter((p) => p.status === "pendente"),
