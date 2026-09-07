@@ -6,14 +6,6 @@ import LiveMap from "../components/LiveMap";
 import { bufferPing, bufferCount, clearBuffered, drainPings } from "../lib/offlineBuffer";
 import { Play, CheckCircle2, Wifi, WifiOff, Radio, MapPin, Navigation, Zap, Square } from "lucide-react";
 
-// Move a point (lat/lng) a fraction of the way towards a destination point.
-function stepToward(from, to, fraction) {
-  return {
-    lat: from.lat + (to.lat - from.lat) * fraction,
-    lng: from.lng + (to.lng - from.lng) * fraction,
-  };
-}
-
 // Bearing in degrees from point a to point b (used as a fake "heading").
 function bearing(a, b) {
   const toRad = (d) => (d * Math.PI) / 180;
@@ -23,6 +15,33 @@ function bearing(a, b) {
     Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
     Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+// Straight-line fallback path (used only if the road-routing request fails).
+function straightLinePath(start, destino, numPoints = 30) {
+  const pts = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    pts.push({ lat: start.lat + (destino.lat - start.lat) * f, lng: start.lng + (destino.lng - start.lng) * f });
+  }
+  return pts;
+}
+
+// Fetches a real driving route (following streets) between two points
+// using the public OSRM demo routing server. Returns an array of
+// { lat, lng } waypoints along the road, or null if the request fails.
+async function fetchRoadRoute(start, destino) {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${destino.lng},${destino.lat}?overview=full&geometries=geojson`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const coords = data?.routes?.[0]?.geometry?.coordinates;
+    if (!coords || coords.length < 2) return null;
+    return coords.map(([lng, lat]) => ({ lat, lng }));
+  } catch (e) {
+    return null;
+  }
 }
 
 export default function DriverApp() {
@@ -127,31 +146,47 @@ export default function DriverApp() {
   };
 
   // Simulates the courier physically moving from a point ~2km away
-  // towards the delivery destination, sending real pings along the way
-  // (every 2s) so the map updates live for the boss/tracking page too.
+  // towards the delivery destination, following real streets (via OSRM)
+  // and sending pings along the way so the map updates live for the
+  // boss/tracking page too.
   const startSimulation = async (pedido) => {
+    // Clear any simulation already running, so this can be clicked again
+    // as many times as needed without stacking multiple timers.
+    if (simTimerRef.current) { clearInterval(simTimerRef.current); simTimerRef.current = null; }
+
     try {
       if (pedido.status === "atribuido") { await api.post(`/pedidos/${pedido.id}/start`); toast.success("Entrega iniciada"); }
     } catch (err) { toast.error(formatApiError(err.response?.data?.detail)); return; }
 
     setActive({ ...pedido, status: "em_rota" });
+    load();
 
     const destino = { lat: pedido.lat, lng: pedido.lng };
     // Start ~2km north-west of the destination (rough degree offset).
     const start = { lat: destino.lat + 0.018, lng: destino.lng - 0.018 };
-    simPosRef.current = start;
-    setPos({ lat: start.lat, lng: start.lng });
+
+    toast.info("Calculando rota…");
+    let route = await fetchRoadRoute(start, destino);
+    if (!route) {
+      toast.error("Não consegui calcular a rota pelas ruas, usando linha reta.");
+      route = straightLinePath(start, destino);
+    }
+
+    simPosRef.current = route[0];
+    setPos({ lat: route[0].lat, lng: route[0].lng });
     setSimulating(true);
-    load();
 
-    let steps = 0;
-    const totalSteps = 40; // ~40 * 2s = ~80s to complete the trip
-
+    let idx = 0;
     simTimerRef.current = setInterval(async () => {
-      steps += 1;
-      const fraction = 0.06; // move 6% closer to destination each tick
-      const next = stepToward(simPosRef.current, destino, fraction);
-      const heading = bearing(simPosRef.current, destino);
+      idx += 1;
+      if (idx >= route.length) {
+        stopSimulation();
+        toast.success("Simulação chegou ao destino — pode finalizar a entrega.");
+        return;
+      }
+      const prev = simPosRef.current;
+      const next = route[idx];
+      const heading = bearing(prev, next);
       simPosRef.current = next;
       setPos({ lat: next.lat, lng: next.lng });
 
@@ -159,13 +194,7 @@ export default function DriverApp() {
         latitude: next.lat, longitude: next.lng,
         accuracy: 8, heading, speed: 8.3, // ~30km/h
       });
-
-      const distLeft = Math.hypot(destino.lat - next.lat, destino.lng - next.lng);
-      if (steps >= totalSteps || distLeft < 0.0006) {
-        stopSimulation();
-        toast.success("Simulação chegou ao destino — pode finalizar a entrega.");
-      }
-    }, 2000);
+    }, 1500);
   };
 
   const stopSimulation = () => {

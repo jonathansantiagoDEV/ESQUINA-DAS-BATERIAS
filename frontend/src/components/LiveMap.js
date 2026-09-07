@@ -74,35 +74,41 @@ export default function LiveMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    layersRef.current.forEach((l) => l.remove());
-    layersRef.current = [];
-    const pts = [];
+    try {
+      layersRef.current.forEach((l) => l.remove());
+      layersRef.current = [];
+      const pts = [];
 
-    if (destination) {
-      const m = L.marker([destination.lat, destination.lng], { icon: destinationIcon }).addTo(map);
-      m.bindPopup("Destino da entrega");
-      layersRef.current.push(m);
-      pts.push([destination.lat, destination.lng]);
-    }
-    if (courier && courier.lat) {
-      const m = L.marker([courier.lat, courier.lng], { icon: courierIcon }).addTo(map);
-      m.bindPopup("Entregador");
-      layersRef.current.push(m);
-      pts.push([courier.lat, courier.lng]);
-    }
-    if (trail.length > 1) {
-      const line = L.polyline(trail.map((t) => [t.lat, t.lng]), { color: "#00D2FF", weight: 4, opacity: 0.7, dashArray: "8 6" }).addTo(map);
-      layersRef.current.push(line);
-    }
-    fleet.forEach((f) => {
-      const m = L.marker([f.lat, f.lng], { icon: fleetCourierIcon(f.name) }).addTo(map);
-      m.bindPopup(f.name);
-      layersRef.current.push(m);
-      pts.push([f.lat, f.lng]);
-    });
+      if (destination && Number.isFinite(destination.lat) && Number.isFinite(destination.lng)) {
+        const m = L.marker([destination.lat, destination.lng], { icon: destinationIcon }).addTo(map);
+        m.bindPopup("Destino da entrega");
+        layersRef.current.push(m);
+        pts.push([destination.lat, destination.lng]);
+      }
+      if (courier && Number.isFinite(courier.lat) && Number.isFinite(courier.lng)) {
+        const m = L.marker([courier.lat, courier.lng], { icon: courierIcon }).addTo(map);
+        m.bindPopup("Entregador");
+        layersRef.current.push(m);
+        pts.push([courier.lat, courier.lng]);
+      }
+      const validTrail = trail.filter((t) => Number.isFinite(t?.lat) && Number.isFinite(t?.lng));
+      if (validTrail.length > 1) {
+        const line = L.polyline(validTrail.map((t) => [t.lat, t.lng]), { color: "#00D2FF", weight: 4, opacity: 0.7, dashArray: "8 6" }).addTo(map);
+        layersRef.current.push(line);
+      }
+      fleet.forEach((f) => {
+        if (!Number.isFinite(f?.lat) || !Number.isFinite(f?.lng)) return;
+        const m = L.marker([f.lat, f.lng], { icon: fleetCourierIcon(f.name) }).addTo(map);
+        m.bindPopup(f.name);
+        layersRef.current.push(m);
+        pts.push([f.lat, f.lng]);
+      });
 
-    if (pts.length === 1) map.setView(pts[0], 15);
-    else if (pts.length > 1) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 16 });
+      if (pts.length === 1) map.setView(pts[0], 15);
+      else if (pts.length > 1) map.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 16 });
+    } catch (e) {
+      console.error("LiveMap render error:", e);
+    }
   }, [propsKey, ready]);
 
   return <div ref={divRef} data-testid="live-map" className={className} style={{ height: "100%", width: "100%" }} />;

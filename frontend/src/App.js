@@ -14,6 +14,7 @@ import AdminTeam from "./pages/AdminTeam";
 import DriverApp from "./pages/DriverApp";
 import PublicTracking from "./pages/PublicTracking";
 import NavShell from "./components/NavShell";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function Guard({ roles, children }) {
   const { user, checked } = useAuth();
@@ -34,31 +35,33 @@ function RoleRedirect() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <Toaster theme="dark" position="bottom-right" richColors closeButton />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<RoleRedirect />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/rastreio/:token" element={<PublicTracking />} />
+    <ErrorBoundary>
+      <AuthProvider>
+        <Toaster theme="dark" position="bottom-right" richColors closeButton />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<RoleRedirect />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/rastreio/:token" element={<PublicTracking />} />
 
-          {/* Client */}
-          <Route path="/loja" element={<Guard roles={["client"]}><NavShell><ClientHome /></NavShell></Guard>} />
-          <Route path="/pedir/:bateriaId" element={<Guard roles={["client"]}><NavShell><ClientOrder /></NavShell></Guard>} />
-          <Route path="/meus-pedidos" element={<Guard roles={["client"]}><NavShell><ClientOrders /></NavShell></Guard>} />
+            {/* Client */}
+            <Route path="/loja" element={<Guard roles={["client"]}><NavShell><ClientHome /></NavShell></Guard>} />
+            <Route path="/pedir/:bateriaId" element={<Guard roles={["client"]}><NavShell><ClientOrder /></NavShell></Guard>} />
+            <Route path="/meus-pedidos" element={<Guard roles={["client"]}><NavShell><ClientOrders /></NavShell></Guard>} />
 
-          {/* Admin */}
-          <Route path="/admin" element={<Guard roles={["admin"]}><NavShell><AdminDashboard /></NavShell></Guard>} />
-          <Route path="/admin/catalogo" element={<Guard roles={["admin"]}><NavShell><AdminCatalog /></NavShell></Guard>} />
-          <Route path="/admin/equipe" element={<Guard roles={["admin"]}><NavShell><AdminTeam /></NavShell></Guard>} />
+            {/* Admin */}
+            <Route path="/admin" element={<Guard roles={["admin"]}><NavShell><AdminDashboard /></NavShell></Guard>} />
+            <Route path="/admin/catalogo" element={<Guard roles={["admin"]}><NavShell><AdminCatalog /></NavShell></Guard>} />
+            <Route path="/admin/equipe" element={<Guard roles={["admin"]}><NavShell><AdminTeam /></NavShell></Guard>} />
 
-          {/* Courier */}
-          <Route path="/entregador" element={<Guard roles={["courier"]}><NavShell><DriverApp /></NavShell></Guard>} />
+            {/* Courier */}
+            <Route path="/entregador" element={<Guard roles={["courier"]}><NavShell><DriverApp /></NavShell></Guard>} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
