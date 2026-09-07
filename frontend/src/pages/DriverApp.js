@@ -4,7 +4,26 @@ import { toast } from "sonner";
 import StatusBadge from "../components/StatusBadge";
 import LiveMap from "../components/LiveMap";
 import { bufferPing, bufferCount, clearBuffered, drainPings } from "../lib/offlineBuffer";
-import { Play, CheckCircle2, Wifi, WifiOff, Radio, MapPin, Navigation } from "lucide-react";
+import { Play, CheckCircle2, Wifi, WifiOff, Radio, MapPin, Navigation, Zap, Square } from "lucide-react";
+
+// Move a point (lat/lng) a fraction of the way towards a destination point.
+function stepToward(from, to, fraction) {
+  return {
+    lat: from.lat + (to.lat - from.lat) * fraction,
+    lng: from.lng + (to.lng - from.lng) * fraction,
+  };
+}
+
+// Bearing in degrees from point a to point b (used as a fake "heading").
+function bearing(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+  const x =
+    Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+    Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
 
 export default function DriverApp() {
   const [pedidos, setPedidos] = useState([]);
@@ -17,6 +36,9 @@ export default function DriverApp() {
   const watchRef = useRef(null);
   const timerRef = useRef(null);
   const lastFlushRef = useRef(0);
+  const [simulating, setSimulating] = useState(false);
+  const simTimerRef = useRef(null);
+  const simPosRef = useRef(null);
 
   const load = async () => {
     try {
@@ -33,7 +55,7 @@ export default function DriverApp() {
     const off = () => setOnline(false);
     window.addEventListener("online", on); window.addEventListener("offline", off);
     bufferCount().then(setBuffered);
-    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); stopTracking(); };
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); stopTracking(); stopSimulation(); };
   }, []);
 
   const effectiveOnline = online && !simOffline;
@@ -104,6 +126,54 @@ export default function DriverApp() {
     setTracking(false);
   };
 
+  // Simulates the courier physically moving from a point ~2km away
+  // towards the delivery destination, sending real pings along the way
+  // (every 2s) so the map updates live for the boss/tracking page too.
+  const startSimulation = async (pedido) => {
+    try {
+      if (pedido.status === "atribuido") { await api.post(`/pedidos/${pedido.id}/start`); toast.success("Entrega iniciada"); }
+    } catch (err) { toast.error(formatApiError(err.response?.data?.detail)); return; }
+
+    setActive({ ...pedido, status: "em_rota" });
+
+    const destino = { lat: pedido.lat, lng: pedido.lng };
+    // Start ~2km north-west of the destination (rough degree offset).
+    const start = { lat: destino.lat + 0.018, lng: destino.lng - 0.018 };
+    simPosRef.current = start;
+    setPos({ lat: start.lat, lng: start.lng });
+    setSimulating(true);
+    load();
+
+    let steps = 0;
+    const totalSteps = 40; // ~40 * 2s = ~80s to complete the trip
+
+    simTimerRef.current = setInterval(async () => {
+      steps += 1;
+      const fraction = 0.06; // move 6% closer to destination each tick
+      const next = stepToward(simPosRef.current, destino, fraction);
+      const heading = bearing(simPosRef.current, destino);
+      simPosRef.current = next;
+      setPos({ lat: next.lat, lng: next.lng });
+
+      await sendPing(pedido.id, {
+        latitude: next.lat, longitude: next.lng,
+        accuracy: 8, heading, speed: 8.3, // ~30km/h
+      });
+
+      const distLeft = Math.hypot(destino.lat - next.lat, destino.lng - next.lng);
+      if (steps >= totalSteps || distLeft < 0.0006) {
+        stopSimulation();
+        toast.success("Simulação chegou ao destino — pode finalizar a entrega.");
+      }
+    }, 2000);
+  };
+
+  const stopSimulation = () => {
+    if (simTimerRef.current) clearInterval(simTimerRef.current);
+    simTimerRef.current = null;
+    setSimulating(false);
+  };
+
   const deliver = async () => {
     if (!active) return;
     try {
@@ -111,7 +181,7 @@ export default function DriverApp() {
       await flushBuffer(active.id);
       await api.post(`/pedidos/${active.id}/deliver`);
       toast.success("Entrega finalizada!");
-      stopTracking(); setActive(null); load();
+      stopTracking(); stopSimulation(); setActive(null); load();
     } catch (err) { toast.error(formatApiError(err.response?.data?.detail)); }
   };
 
@@ -165,10 +235,16 @@ export default function DriverApp() {
 
           <div className="grid grid-cols-2 gap-2 mt-3">
             {active.status === "atribuido" && (
-              <button data-testid="btn-start" onClick={() => startTracking(active)}
-                className="col-span-2 btn-electric py-3.5 rounded-lg flex items-center justify-center gap-2">
-                <Play className="w-4 h-4"/> Iniciar entrega (GPS 15s)
-              </button>
+              <>
+                <button data-testid="btn-start" onClick={() => startTracking(active)}
+                  className="col-span-2 btn-electric py-3.5 rounded-lg flex items-center justify-center gap-2">
+                  <Play className="w-4 h-4"/> Iniciar entrega (GPS real)
+                </button>
+                <button data-testid="btn-sim-start" onClick={() => startSimulation(active)}
+                  className="col-span-2 glass py-3 rounded-lg flex items-center justify-center gap-2 text-[#00D2FF] border-[#00D2FF]/40">
+                  <Zap className="w-4 h-4"/> Simular deslocamento
+                </button>
+              </>
             )}
             {active.status === "em_rota" && (
               <>
@@ -180,6 +256,19 @@ export default function DriverApp() {
                   className="btn-volt py-3.5 rounded-lg flex items-center justify-center gap-2">
                   <CheckCircle2 className="w-4 h-4"/> Finalizar
                 </button>
+                {!tracking && (
+                  simulating ? (
+                    <button data-testid="btn-sim-stop" onClick={stopSimulation}
+                      className="col-span-2 glass py-3 rounded-lg flex items-center justify-center gap-2 text-red-400 border-red-400/40">
+                      <Square className="w-4 h-4"/> Parar simulação
+                    </button>
+                  ) : (
+                    <button data-testid="btn-sim-start" onClick={() => startSimulation(active)}
+                      className="col-span-2 glass py-3 rounded-lg flex items-center justify-center gap-2 text-[#00D2FF] border-[#00D2FF]/40">
+                      <Zap className="w-4 h-4"/> Simular deslocamento
+                    </button>
+                  )
+                )}
               </>
             )}
           </div>
