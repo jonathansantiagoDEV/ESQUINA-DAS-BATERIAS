@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+
+:root {
+  --bg: #0A0A0C;
+  --bg-card: #141417;
+  --bg-elev: #1C1C21;
+  --border: rgba(255,255,255,0.08);
+  --border-active: rgba(0,210,255,0.4);
+  --text: #FFFFFF;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --volt: #E30613;
+  --brand: #E30613;
+  --brand-bright: #FF4655;
+  --electric: #00D2FF;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at top left, rgba(0,210,255,0.05), transparent 55%),
+    radial-gradient(ellipse at bottom right, rgba(227,6,19,0.08), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* Prevent iOS input zoom */
+input, select, textarea { font-size: 16px; }
+
+h1, h2, h3, h4, h5, .heading { font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.02em; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+@layer base {
+  :root {
+    --background: 224 30% 5%;
+    --foreground: 0 0% 100%;
+    --card: 226 24% 9%;
+    --card-foreground: 0 0% 100%;
+    --popover: 226 24% 9%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 356 92% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 226 24% 14%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 226 24% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 191 100% 50%;
+    --accent-foreground: 224 30% 5%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 224 15% 20%;
+    --input: 224 20% 14%;
+    --ring: 191 100% 50%;
+    --radius: 0.75rem;
+  }
+}
+
+.glass {
+  background: rgba(17,20,29,0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+}
+
+.glass-strong {
+  background: rgba(9,11,16,0.85);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border);
+}
+
+.volt-glow {
+  box-shadow: 0 0 0 1px rgba(227,6,19,0.45), 0 8px 32px rgba(227,6,19,0.2);
+}
+
+.electric-glow {
+  box-shadow: 0 0 0 1px rgba(0,210,255,0.4), 0 8px 32px rgba(0,210,255,0.18);
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0,210,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,210,255,0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Pulse for live GPS */
+@keyframes ping-slow {
+  0% { transform: scale(1); opacity: 0.8; }
+  70% { transform: scale(3); opacity: 0; }
+  100% { transform: scale(3); opacity: 0; }
+}
+.pulse-dot::after {
+  content: ''; position: absolute; inset: 0; border-radius: 9999px;
+  background: currentColor; animation: ping-slow 1.8s ease-out infinite;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+/* Leaflet dark tuning */
+.leaflet-container { background: #0B0E15; }
+.leaflet-tile { filter: hue-rotate(180deg) invert(0.92) brightness(0.85) contrast(0.95); }
+.leaflet-control-attribution { background: rgba(0,0,0,0.5) !important; color: #94A3B8 !important; }
+.leaflet-control-attribution a { color: #38BDF8 !important; }
+.leaflet-control-zoom a { background: #11141D !important; color: #fff !important; border-color: rgba(255,255,255,0.1) !important; }
+
+/* Tudor red gradient button */
+.btn-volt {
+  background: linear-gradient(135deg, #E30613 0%, #8F000B 100%);
+  color: #FFFFFF;
+  font-weight: 700;
+  transition: transform .15s ease, box-shadow .2s ease;
+}
+.btn-volt:hover { transform: translateY(-1px); box-shadow: 0 12px 32px rgba(227,6,19,0.4); }
+.btn-volt:active { transform: translateY(0); }
+
+.btn-electric {
+  background: linear-gradient(135deg, #00D2FF 0%, #0091EA 100%);
+  color: #090B10;
+  font-weight: 700;
+}
+
+.no-select { user-select: none; -webkit-user-select: none; }
+
+@layer base {
+  * { @apply border-border; }
+}
+
+/* fullscreen tracking */
+.map-fullscreen { position: fixed; inset: 0; z-index: 10; }
+.telemetry-card {
+  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 30;
+}
+@media (min-width: 768px) {
+  .telemetry-card { left: 24px; right: auto; bottom: 24px; width: 420px; }
+}

@@ -1,0 +1,10 @@
+{
+  "short_name": "Esquina das Baterias",
+  "name": "Esquina das Baterias — Bateria na hora",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090B10",
+  "theme_color": "#E30613",
+  "description": "Peça, despache e rastreie entregas de baterias em tempo real."
+}
