@@ -6,7 +6,7 @@ import React from "react";
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, info: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -14,7 +14,10 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    // Also log to console for anyone who does have DevTools open.
+    // info.componentStack lists the real (non-minified) component names
+    // where the error happened, even in a production build — much more
+    // useful than error.stack alone when the JS bundle is minified.
+    this.setState({ info });
     console.error("ErrorBoundary caught:", error, info);
   }
 
@@ -38,6 +41,18 @@ export default class ErrorBoundary extends React.Component {
             }}>
               {String(this.state.error && this.state.error.stack ? this.state.error.stack : this.state.error)}
             </pre>
+            {this.state.info && this.state.info.componentStack && (
+              <>
+                <p style={{ color: "#94A3B8", margin: "16px 0 8px" }}>Em qual componente aconteceu:</p>
+                <pre style={{
+                  background: "#151821", padding: 16, borderRadius: 8,
+                  whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: 13,
+                  color: "#00D2FF", maxHeight: 300, overflow: "auto",
+                }}>
+                  {this.state.info.componentStack}
+                </pre>
+              </>
+            )}
             <button
               onClick={() => window.location.reload()}
               style={{
