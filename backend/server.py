@@ -453,10 +453,15 @@ async def push_pings(pid: str, batch: PingBatch, user=Depends(require_roles("cou
             {"id": pid},
             {"$set": {"last_position": {"lat": last["lat"], "lng": last["lng"], "ts": last["ts"], "heading": last["heading"]}}},
         )
-        # broadcast via ws
+        # broadcast via ws — public tracking link (client) and the admin fleet map
         await ws_manager.broadcast_track(p["track_token"], {
             "type": "ping", "lat": last["lat"], "lng": last["lng"],
             "ts": last["ts"], "heading": last["heading"], "speed": last["speed"],
+        })
+        await ws_manager.broadcast_fleet(user["tenant_id"], {
+            "type": "fleet_ping", "pedido_id": pid,
+            "entregador_nome": p.get("entregador_nome") or user.get("name"),
+            "lat": last["lat"], "lng": last["lng"], "ts": last["ts"],
         })
     return {"stored": len(docs)}
 
@@ -509,6 +514,13 @@ class WSManager:
             except Exception:
                 self.leave(ws)
 
+    async def broadcast_fleet(self, tenant_id: str, data: dict):
+        for ws in list(self.fleet_rooms.get(tenant_id, [])):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                self.leave(ws)
+
 ws_manager = WSManager()
 
 @app.websocket("/api/ws/track/{token}")
@@ -521,6 +533,32 @@ async def ws_track(ws: WebSocket, token: str):
     try:
         # send initial snapshot
         await ws.send_json({"type": "snapshot", "last_position": p.get("last_position"), "status": p["status"]})
+        while True:
+            await ws.receive_text()  # keepalive
+    except WebSocketDisconnect:
+        ws_manager.leave(ws)
+    except Exception:
+        ws_manager.leave(ws)
+
+async def ws_authenticate(ws: WebSocket) -> Optional[Dict[str, Any]]:
+    token = ws.cookies.get("access_token") or ws.query_params.get("token")
+    if not token:
+        return None
+    try:
+        payload = decode_token(token)
+    except Exception:
+        return None
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    return user
+
+@app.websocket("/api/ws/fleet")
+async def ws_fleet(ws: WebSocket):
+    user = await ws_authenticate(ws)
+    if not user or user["role"] != "admin":
+        await ws.close(code=4401)
+        return
+    await ws_manager.join_fleet(user["tenant_id"], ws)
+    try:
         while True:
             await ws.receive_text()  # keepalive
     except WebSocketDisconnect:

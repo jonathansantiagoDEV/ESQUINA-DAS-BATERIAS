@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { api, formatApiError } from "../lib/api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { api, formatApiError, BACKEND_URL } from "../lib/api";
 import StatusBadge from "../components/StatusBadge";
 import LiveMap from "../components/LiveMap";
 import { toast } from "sonner";
@@ -11,6 +11,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [assignFor, setAssignFor] = useState(null);
   const [selectedCourier, setSelectedCourier] = useState("");
+  const [livePos, setLivePos] = useState({}); // pedido_id -> { lat, lng, ts }
+  const wsRef = useRef(null);
 
   const load = async () => {
     setLoading(true);
@@ -22,6 +24,30 @@ export default function AdminDashboard() {
   };
   useEffect(() => { load(); const iv = setInterval(load, 3000); return () => clearInterval(iv); }, []);
 
+  // Live fleet positions via WebSocket — the 3s poll above still handles
+  // status changes (new pedidos, assignments), but courier movement now
+  // arrives instantly instead of waiting up to 3s.
+  useEffect(() => {
+    const tok = localStorage.getItem("volt_token");
+    const wsUrl = BACKEND_URL.replace(/^https?:/, BACKEND_URL.startsWith("https") ? "wss:" : "ws:")
+      + `/api/ws/fleet${tok ? `?token=${encodeURIComponent(tok)}` : ""}`;
+    let ws;
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      ws.onmessage = (ev) => {
+        try {
+          const m = JSON.parse(ev.data);
+          if (m.type === "fleet_ping" && m.pedido_id) {
+            setLivePos((prev) => ({ ...prev, [m.pedido_id]: { lat: m.lat, lng: m.lng, ts: m.ts } }));
+          }
+        } catch {}
+      };
+      ws.onerror = () => {};
+    } catch {}
+    return () => { try { ws?.close(); } catch {} };
+  }, []);
+
   const buckets = useMemo(() => ({
     pendente: pedidos.filter((p) => p.status === "pendente"),
     atribuido: pedidos.filter((p) => p.status === "atribuido"),
@@ -30,8 +56,11 @@ export default function AdminDashboard() {
   }), [pedidos]);
 
   const fleet = pedidos
-    .filter((p) => p.status === "em_rota" && p.last_position)
-    .map((p) => ({ id: p.id, name: p.entregador_nome || "Entregador", lat: p.last_position.lat, lng: p.last_position.lng }));
+    .filter((p) => p.status === "em_rota" && (livePos[p.id] || p.last_position))
+    .map((p) => {
+      const pos = livePos[p.id] || p.last_position;
+      return { id: p.id, name: p.entregador_nome || "Entregador", lat: pos.lat, lng: pos.lng };
+    });
 
   const doAssign = async () => {
     if (!selectedCourier || !assignFor) return;
